@@ -7,6 +7,7 @@ import { logJob, logError } from '@/lib/log';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 300; // Imagen 생성 포함 최대 5분
 
 /**
  * GET /api/jobs/run
