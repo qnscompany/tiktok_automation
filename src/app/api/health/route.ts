@@ -1,3 +1,4 @@
+// Redeploy trigger: 2026-03-02 15:52
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
