@@ -21,6 +21,32 @@ function truncate(text: string, max = 38): string {
 }
 
 /**
+ * 폰트 데이터를 가져옵니다. satori는 폰트가 필수입니다.
+ * 여러 CDN에서 시도하여 실패하면 에러를 던집니다.
+ */
+async function loadFont(): Promise<ArrayBuffer> {
+    const urls = [
+        // Noto Sans KR (Google Fonts CDN - 한글 지원)
+        'https://fonts.gstatic.com/s/notosanskr/v36/Bt8-LBNWM_ALPaAiU5B5-TatLq3F2TTKIS4Hqhwl.woff',
+        // 대안: Noto Sans (라틴 전용, 더 가벼움)
+        'https://fonts.gstatic.com/s/notosans/v36/o-0IIpQlx3QUlC5A4PNr5TRGSMxW8JMDPA.woff',
+    ];
+
+    for (const url of urls) {
+        try {
+            const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+                return await res.arrayBuffer();
+            }
+        } catch {
+            // 다음 URL 시도
+        }
+    }
+
+    throw new Error('Failed to load font for slide rendering. All CDN URLs failed.');
+}
+
+/**
  * 단일 슬라이드 이미지를 렌더링합니다.
  * satori → SVG → sharp → PNG Buffer
  */
@@ -31,6 +57,9 @@ export async function renderSlide(
 ): Promise<Buffer> {
     const palette = BACKGROUNDS[(index - 1) % BACKGROUNDS.length];
     const narration = truncate(scene.narrationText);
+
+    // 폰트 로드
+    const fontData = await loadFont();
 
     // satori VNode 정의 (React-style 객체)
     const vnode = {
@@ -137,11 +166,11 @@ export async function renderSlide(
         },
     };
 
-    // SVG 생성 (폰트 없이 기본 sans-serif 사용)
+    // SVG 생성 (loadFont()로 로드한 폰트 사용)
     const svg = await satori(vnode as any, {
         width: WIDTH,
         height: HEIGHT,
-        fonts: [], // 기본 sans-serif 폰트 사용 (폰트 파일 불필요)
+        fonts: [{ name: 'NotoSans', data: fontData, weight: 400, style: 'normal' }],
     });
 
     // SVG → PNG (sharp 사용, Vercel 공식 지원)
