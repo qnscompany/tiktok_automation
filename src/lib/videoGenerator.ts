@@ -154,11 +154,14 @@ function synthesizeVideo(slidePaths: string[], audioInfos: AudioInfo[], outputPa
             .outputOptions([
                 '-pix_fmt yuv420p',
                 '-r 30',
-                '-vsync vfr' // 가변 프레임레이트 허용하여 오디오 싱크 최적화
+                '-vsync vfr',
+                '-y' // Overwrite output file
             ])
             .on('start', (cmd) => console.log('FFmpeg command:', cmd))
-            .on('error', (err) => {
-                console.error('FFmpeg failed:', err);
+            .on('error', (err, stdout, stderr) => {
+                console.error('FFmpeg failed:', err.message);
+                console.error('FFmpeg stderr:', stderr);
+                (err as any).ffmpegError = stderr;
                 reject(err);
             })
             .on('end', () => {
