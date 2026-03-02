@@ -1,43 +1,45 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { generateTikTokScript, getGeminiClient } from '@/lib/gemini';
 import { generateSlides } from '@/lib/slideGenerator';
+import { generateBackgrounds } from '@/lib/backgroundGenerator';
+import { renderSlide } from '@/lib/slideRenderer';
+import { uploadSlide } from '@/lib/storage';
 import { logJob, logError } from '@/lib/log';
+import type { TikTokScript } from '@/lib/schema';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-export const maxDuration = 300; // Imagen 생성 포함 최대 5분
+export const maxDuration = 300;
 
 /**
  * GET /api/jobs/run
  * Vercel Cron이 호출하는 엔드포인트
+ *
+ * Phase 5 전략:
+ * 1. 슬라이드 5장을 그라데이션 배경으로 즉시 생성 → 응답
+ * 2. after()로 배경 이미지 생성 후 슬라이드 1/4 재렌더 + 재업로드
  */
 export async function GET(request: Request) {
     const requestId = `run_${Date.now()}`;
 
-    // 1. 초기화 및 환경 변수 체크 (핸들러 내부에서 수행)
     const { client: supabase, error: dbError } = getSupabaseAdmin();
-    const { error: geminiError } = getGeminiClient(); // 존재 여부만 체크
+    const { error: geminiError } = getGeminiClient();
     const cronSecret = process.env.CRON_SECRET;
 
     if (dbError || !supabase || geminiError || !cronSecret) {
         const details = [dbError, geminiError, !cronSecret ? 'Missing CRON_SECRET' : null].filter(Boolean).join(', ');
-        return NextResponse.json({
-            error: 'Configuration Error',
-            details,
-            requestId
-        }, { status: 500 });
+        return NextResponse.json({ error: 'Configuration Error', details, requestId }, { status: 500 });
     }
 
-    // 2. 인증 체크
     const authHeader = request.headers.get('Authorization');
     if (authHeader !== `Bearer ${cronSecret}`) {
         return NextResponse.json({ error: 'Unauthorized', requestId }, { status: 401 });
     }
 
     try {
-        // 3. 대기 중인 작업 조회 (1개만)
         const { data: job, error: fetchError } = await supabase
             .from('jobs')
             .select('*')
@@ -47,7 +49,6 @@ export async function GET(request: Request) {
             .maybeSingle();
 
         if (fetchError) {
-            logError('Job fetch failed', fetchError);
             return NextResponse.json({ error: 'Failed to fetch job', details: fetchError.message, requestId }, { status: 500 });
         }
 
@@ -58,54 +59,93 @@ export async function GET(request: Request) {
         const jobId = job.id;
         logJob(jobId, 'RUNNING', 'Job started', { topic: job.topic });
 
-        // 4. 작업 상태 업데이트 (running)
-        const { error: updateError } = await supabase
-            .from('jobs')
-            .update({ status: 'running' })
-            .eq('id', jobId);
+        await supabase.from('jobs').update({ status: 'running' }).eq('id', jobId);
 
-        if (updateError) {
-            logError('Job status update failed', updateError);
-            return NextResponse.json({ error: 'Failed to update job status', details: updateError.message, requestId }, { status: 500 });
-        }
-
-        // 5. 스크립트 생성 (Gemini)
         try {
+            // ── Step 1: 스크립트 생성 ──────────────────────────────
             const script = await generateTikTokScript(job.topic, job.tone, job.audience);
 
-            // 6. 스크립트 결과 저장 (assets 테이블)
-            const { error: assetError } = await supabase
-                .from('assets')
-                .insert([{
-                    job_id: jobId,
-                    type: 'script_json',
-                    content_json: script
-                }]);
+            await supabase.from('assets').insert([{
+                job_id: jobId,
+                type: 'script_json',
+                content_json: script,
+            }]);
 
-            if (assetError) throw assetError;
+            logJob(jobId, 'RUNNING', 'Script generated, starting slide generation (gradient fallback)');
 
-            logJob(jobId, 'RUNNING', 'Script generated, starting slide generation');
-
-            // 7. 슬라이드 이미지 5장 생성 + 업로드 + DB 기록
+            // ── Step 2: 슬라이드 5장 생성 (그라데이션 배경) ──────────
             await generateSlides(supabase, jobId, script, job.topic);
 
-            // 8. 작업 완료 처리
-            await supabase
-                .from('jobs')
-                .update({ status: 'done' })
-                .eq('id', jobId);
+            // ── Step 3: 작업 완료 처리 ────────────────────────────
+            await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+            logJob(jobId, 'DONE', 'Job completed (5 slides with gradient backgrounds)');
 
-            logJob(jobId, 'DONE', 'Job completed (script + 5 slides)');
+            // ── Step 4: after() — 응답 후 배경 생성 + 슬라이드 재렌더 
+            after(async () => {
+                try {
+                    logJob(jobId, 'BACKGROUND', 'Starting post-response background generation...');
+                    const { client: bgSupabase } = getSupabaseAdmin();
+                    if (!bgSupabase) {
+                        logError('after(): bgSupabase null', null);
+                        return;
+                    }
+
+                    const bgMap = await generateBackgrounds(bgSupabase, jobId, script.scenes, job.topic);
+                    logJob(jobId, 'BACKGROUND', `Backgrounds generated: ${bgMap.size}/2`);
+
+                    // 배경이 생성된 씬의 슬라이드를 재렌더링하여 덮어쓰기
+                    for (const [sceneIndex, bgResult] of bgMap.entries()) {
+                        const scene = script.scenes.find(s => s.index === sceneIndex);
+                        if (!scene) continue;
+
+                        const { data: bgBytes, error: dlError } = await bgSupabase.storage
+                            .from('tiktok-assets')
+                            .download(bgResult.storagePath);
+
+                        if (dlError || !bgBytes) {
+                            logError(`after(): bg download failed for scene ${sceneIndex}`, dlError);
+                            continue;
+                        }
+
+                        const bgBuffer = Buffer.from(await bgBytes.arrayBuffer());
+                        const pngBuffer = await renderSlide(scene, job.topic, sceneIndex, bgBuffer);
+                        const { storagePath } = await uploadSlide(bgSupabase, jobId, sceneIndex, pngBuffer);
+
+                        // 기존 slide_image asset 업데이트 (hasCustomBg: true로)
+                        const { data: existingAssets } = await bgSupabase
+                            .from('assets')
+                            .select('id, content_json')
+                            .eq('job_id', jobId)
+                            .eq('type', 'slide_image')
+                            .eq('content_json->>index', String(sceneIndex));
+
+                        if (existingAssets?.[0]) {
+                            await bgSupabase
+                                .from('assets')
+                                .update({
+                                    content_json: {
+                                        ...existingAssets[0].content_json,
+                                        hasCustomBg: true,
+                                        bgStoragePath: bgResult.storagePath,
+                                    },
+                                })
+                                .eq('id', existingAssets[0].id);
+                        }
+
+                        logJob(jobId, 'BACKGROUND', `Scene ${sceneIndex} slide re-rendered with Imagen background`);
+                    }
+
+                    logJob(jobId, 'BACKGROUND', 'Background generation complete.');
+                } catch (bgErr: any) {
+                    logError(`after(): background generation failed for job ${jobId}`, bgErr);
+                }
+            });
+
             return NextResponse.json({ ok: true, jobId, requestId });
 
         } catch (error: any) {
-            // 실패 처리
-            logError(`Job ${jobId} failed execution`, error);
-            await supabase
-                .from('jobs')
-                .update({ status: 'failed', error: error.message })
-                .eq('id', jobId);
-
+            logError(`Job ${jobId} failed`, error);
+            await supabase.from('jobs').update({ status: 'failed', error: error.message }).eq('id', jobId);
             return NextResponse.json({ error: 'Job execution failed', details: error.message, requestId }, { status: 500 });
         }
 
