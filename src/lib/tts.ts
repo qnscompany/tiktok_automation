@@ -23,7 +23,33 @@ interface GenerateTtsArgs {
 }
 
 /**
+ * Raw PCM 데이터에 WAV 헤더를 추가합니다.
+ * Gemini 2.5 Flash Preview TTS는 기본적으로 24kHz, 16-bit mono PCM을 반환합니다.
+ */
+function addWavHeader(pcmBuffer: Buffer, sampleRate: number = 24000): Buffer {
+    const dataSize = pcmBuffer.length;
+    const header = Buffer.alloc(44);
+
+    header.write('RIFF', 0);
+    header.writeUInt32LE(dataSize + 36, 4); // ChunkSize
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);            // Subchunk1Size (16 for PCM)
+    header.writeUInt16LE(1, 20);             // AudioFormat (1 for PCM)
+    header.writeUInt16LE(1, 22);             // NumChannels (1 for Mono)
+    header.writeUInt32LE(sampleRate, 24);    // SampleRate
+    header.writeUInt32LE(sampleRate * 2, 28);// ByteRate (SampleRate * NumChannels * BitsPerSample/8)
+    header.writeUInt16LE(2, 32);             // BlockAlign (NumChannels * BitsPerSample/8)
+    header.writeUInt16LE(16, 34);            // BitsPerSample
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);      // Subchunk2Size
+
+    return Buffer.concat([header, pcmBuffer]);
+}
+
+/**
  * Gemini 2.5 Flash Preview TTS 모델을 호출하여 텍스트를 오디오 Buffer로 변환합니다.
+ * 반환된 PCM 데이터에 WAV 헤더를 입혀 표준 오디오 파일로 만듭니다.
  */
 export async function generateTtsAudio({ text }: GenerateTtsArgs): Promise<Buffer> {
     const model = getGeminiTtsModel();
@@ -40,20 +66,16 @@ export async function generateTtsAudio({ text }: GenerateTtsArgs): Promise<Buffe
         });
 
         const response = await result.response;
-        const candidates = response.candidates;
-
-        if (!candidates || candidates.length === 0) {
-            throw new Error('No candidates received from Gemini TTS API');
-        }
-
-        const audioPart = candidates[0].content?.parts?.find(p => p.inlineData);
+        const audioPart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
 
         if (!audioPart || !audioPart.inlineData) {
-            console.error('Gemini TTS: No audio data in response content', JSON.stringify(candidates[0].content));
-            throw new Error('No audio data (inlineData) received from Gemini');
+            throw new Error('No audio data received from Gemini');
         }
 
-        return Buffer.from(audioPart.inlineData.data, 'base64');
+        const pcmBuffer = Buffer.from(audioPart.inlineData.data, 'base64');
+
+        // 0-second 문제를 해결하기 위해 WAV 헤더 추가
+        return addWavHeader(pcmBuffer, 24000);
     } catch (error: any) {
         console.error('Gemini 2.5 TTS Error:', error);
         throw new Error(`Gemini 2.5 TTS generation failed: ${error.message}`);

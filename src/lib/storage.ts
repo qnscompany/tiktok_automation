@@ -86,12 +86,12 @@ export async function uploadAudio(
     sceneIndex: number,
     audioBuffer: Buffer
 ): Promise<{ storagePath: string; publicUrl: string }> {
-    const storagePath = `jobs/${jobId}/audio/${sceneIndex}.mp3`;
+    const storagePath = `jobs/${jobId}/audio/${sceneIndex}.wav`;
 
     const { error: uploadError } = await supabase.storage
         .from(BUCKET_NAME)
         .upload(storagePath, audioBuffer, {
-            contentType: 'audio/mpeg',
+            contentType: 'audio/wav',
             upsert: true,
         });
 
