@@ -83,7 +83,7 @@ export async function GET(request: Request) {
             // ── Step 4: after() — 응답 후 배경 생성 + 슬라이드 재렌더 
             after(async () => {
                 try {
-                    logJob(jobId, 'BACKGROUND', 'Starting post-response background generation...');
+                    logJob(jobId, 'RUNNING', 'Starting post-response background generation...');
                     const { client: bgSupabase } = getSupabaseAdmin();
                     if (!bgSupabase) {
                         logError('after(): bgSupabase null', null);
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
                     }
 
                     const bgMap = await generateBackgrounds(bgSupabase, jobId, script.scenes, job.topic);
-                    logJob(jobId, 'BACKGROUND', `Backgrounds generated: ${bgMap.size}/2`);
+                    logJob(jobId, 'RUNNING', `Backgrounds generated: ${bgMap.size}/2`);
 
                     // 배경이 생성된 씬의 슬라이드를 재렌더링하여 덮어쓰기
                     for (const [sceneIndex, bgResult] of bgMap.entries()) {
@@ -132,10 +132,10 @@ export async function GET(request: Request) {
                                 .eq('id', existingAssets[0].id);
                         }
 
-                        logJob(jobId, 'BACKGROUND', `Scene ${sceneIndex} slide re-rendered with Imagen background`);
+                        logJob(jobId, 'RUNNING', `Scene ${sceneIndex} slide re-rendered with Imagen background`);
                     }
 
-                    logJob(jobId, 'BACKGROUND', 'Background generation complete.');
+                    logJob(jobId, 'RUNNING', 'Background generation complete.');
                 } catch (bgErr: any) {
                     logError(`after(): background generation failed for job ${jobId}`, bgErr);
                 }
