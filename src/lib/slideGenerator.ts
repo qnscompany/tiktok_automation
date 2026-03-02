@@ -24,10 +24,12 @@ async function fetchBackground(
     topic: string
 ): Promise<BackgroundResult | null> {
     try {
-        // 배포 환경에서는 VERCEL_URL, 로컬에서는 localhost
-        const baseUrl = process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : 'http://localhost:3000';
+        // Vercel에서 VERCEL_URL은 현재 배포의 URL (alias 아닌 고유 URL)
+        // NEXT_PUBLIC_SITE_URL이 설정되어 있으면 우선 사용
+        // 그 다음 VERCEL_URL, 없으면 프로덕션 alias URL
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
+            ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+            ?? 'https://tiktok-automation-one.vercel.app';
 
         const res = await fetch(`${baseUrl}/api/jobs/gen-bg`, {
             method: 'POST',
