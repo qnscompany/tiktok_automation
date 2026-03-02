@@ -8,181 +8,212 @@ import type { Scene } from './schema';
 const WIDTH = 1080;
 const HEIGHT = 1920;
 
-// 배경 색상 세트 (index별 순환)
-const BACKGROUNDS = [
-    { bg: '#1a1a2e', accent: '#e94560' },  // 딥 블루
-    { bg: '#0f3460', accent: '#f5a623' },  // 미드나잇 블루
-    { bg: '#1b4332', accent: '#52b788' },  // 다크 그린
+// 프리미엄 팔레트 및 그라데이션 정의
+const THEMES = [
+    {
+        bg: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+        accent: '#38BDF8', // Sky Blue
+        glass: 'rgba(255, 255, 255, 0.03)',
+        border: 'rgba(255, 255, 255, 0.08)',
+    },
+    {
+        bg: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+        accent: '#818CF8', // Indigo
+        glass: 'rgba(255, 255, 255, 0.03)',
+        border: 'rgba(255, 255, 255, 0.08)',
+    },
+    {
+        bg: 'linear-gradient(135deg, #450A0A 0%, #7F1D1D 100%)',
+        accent: '#F87171', // Red
+        glass: 'rgba(255, 255, 255, 0.03)',
+        border: 'rgba(255, 255, 255, 0.08)',
+    },
 ];
 
 /**
- * 나레이션 텍스트를 1줄로 자릅니다.
- */
-function truncate(text: string, max = 38): string {
-    return text.length <= max ? text : text.slice(0, max - 3) + '...';
-}
-
-/**
- * 번들된 한국어 폰트 파일들을 읽어옵니다 (@fontsource/noto-sans-kr 패키지에서).
- * 디렉토리의 모든 woff subset 파일을 로드하여 완전한 한글 커버리지를 보장합니다.
+ * 폰트 데이터를 로드합니다.
+ * Vercel 빌드 시 node_modules 내의 폰트 파일이 포함되도록 경로를 명확히 지정합니다.
  */
 function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
-    const basePath = path.join(
-        process.cwd(),
-        'node_modules',
-        '@fontsource',
-        'noto-sans-kr',
-        'files'
-    );
+    // 폰트 파일들이 위치한 절대 경로
+    const basePath = path.join(process.cwd(), 'node_modules', '@fontsource', 'noto-sans-kr', 'files');
 
-    // 디렉토리의 모든 400-normal.woff 파일을 자동으로 읽음
-    const files = fs.readdirSync(basePath).filter(
-        f => f.endsWith('-400-normal.woff')
-    );
+    // Bold(700) 웨이트의 모든 서브셋 파일을 찾습니다.
+    // satori는 동일한 name의 여러 폰트를 받으면 자동으로 필요한 subset을 선택해 사용합니다.
+    const files = fs.readdirSync(basePath).filter(f => f.includes('noto-sans-kr') && f.includes('-700-normal.woff'));
 
-    const fonts: Parameters<typeof satori>[1]['fonts'] = files.map(filename => {
-        const buf = fs.readFileSync(path.join(basePath, filename));
-        // Node.js Buffer.buffer는 메모리 풀 공유 가능 → byteOffset/byteLength로 정확히 slice
-        const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-        return { name: 'NotoSansKR', data: arrayBuffer, weight: 400 as const, style: 'normal' as const };
-    });
-
-    if (fonts.length === 0) {
-        throw new Error('No Korean font files found. Check @fontsource/noto-sans-kr installation.');
+    if (files.length === 0) {
+        throw new Error('No Noto Sans KR Bold fonts found in node_modules.');
     }
 
-    return fonts;
+    return files.map(filename => {
+        const buf = fs.readFileSync(path.join(basePath, filename));
+        const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        return {
+            name: 'NotoSansKR',
+            data: arrayBuffer,
+            weight: 700,
+            style: 'normal',
+        };
+    });
 }
 
 /**
  * 단일 슬라이드 이미지를 렌더링합니다.
- * satori → SVG → sharp → PNG Buffer
  */
 export async function renderSlide(
     scene: Scene,
     topic: string,
     index: number
 ): Promise<Buffer> {
-    const palette = BACKGROUNDS[(index - 1) % BACKGROUNDS.length];
-    const narration = truncate(scene.narrationText);
+    const theme = THEMES[(index - 1) % THEMES.length];
 
-    // 폰트 로드 (한국어 지원 subset들 동기식 로드)
+    // 폰트 로드 (동기식으로 수행하거나 위에서 캐싱 권장)
     const fonts = loadFonts();
 
-    // satori VNode 정의 (React-style 객체)
+    // satori VNode 정의
     const vnode = {
         type: 'div',
         props: {
             style: {
                 width: WIDTH,
                 height: HEIGHT,
-                backgroundColor: palette.bg,
+                background: theme.bg,
                 display: 'flex',
                 flexDirection: 'column' as const,
                 alignItems: 'center',
-                justifyContent: 'center',
-                padding: '80px',
-                gap: '40px',
+                justifyContent: 'space-between',
+                padding: '120px 80px',
                 fontFamily: 'NotoSansKR',
             },
             children: [
-                // 슬라이드 번호
+                // Header: Scene Indicator
                 {
                     type: 'div',
                     props: {
                         style: {
-                            width: 80,
-                            height: 80,
-                            borderRadius: 40,
-                            backgroundColor: 'rgba(255,255,255,0.15)',
+                            padding: '16px 40px',
+                            borderRadius: '100px',
+                            background: 'rgba(255,255,255,0.08)',
+                            border: `1px solid ${theme.border}`,
+                            color: theme.accent,
+                            fontSize: '32px',
+                            fontWeight: 700,
+                            letterSpacing: '2px',
+                        },
+                        children: `SCENE 0${index}`,
+                    },
+                },
+
+                // Content: Main Glass Card
+                {
+                    type: 'div',
+                    props: {
+                        style: {
                             display: 'flex',
+                            flexDirection: 'column' as const,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: palette.accent,
-                            fontSize: 38,
-                            fontWeight: 700,
+                            width: '920px',
+                            minHeight: '800px',
+                            padding: '80px',
+                            borderRadius: '64px',
+                            background: theme.glass,
+                            border: `1px solid ${theme.border}`,
+                            boxShadow: '0 40px 100px -20px rgba(0, 0, 0, 0.6)',
                         },
-                        children: String(index),
+                        children: [
+                            {
+                                type: 'div',
+                                props: {
+                                    style: {
+                                        color: theme.accent,
+                                        fontSize: '28px',
+                                        fontWeight: 500,
+                                        letterSpacing: '6px',
+                                        marginBottom: '60px',
+                                        opacity: 0.8,
+                                    },
+                                    children: topic.toUpperCase(),
+                                },
+                            },
+                            {
+                                type: 'div',
+                                props: {
+                                    style: {
+                                        color: '#FFFFFF',
+                                        fontSize: '92px',
+                                        fontWeight: 700,
+                                        textAlign: 'center' as const,
+                                        lineHeight: 1.2,
+                                        wordBreak: 'keep-all' as const,
+                                        textShadow: '0 10px 30px rgba(0,0,0,0.4)',
+                                    },
+                                    children: scene.onScreenText,
+                                },
+                            },
+                        ],
                     },
                 },
-                // 토픽 라벨
+
+                // Footer: Narration & Branding
                 {
                     type: 'div',
                     props: {
                         style: {
-                            color: 'rgba(255,255,255,0.55)',
-                            fontSize: 28,
-                            textAlign: 'center' as const,
+                            display: 'flex',
+                            flexDirection: 'column' as const,
+                            alignItems: 'center',
+                            width: '100%',
+                            gap: '80px',
                         },
-                        children: topic.substring(0, 28),
-                    },
-                },
-                // 구분선
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            width: 200,
-                            height: 3,
-                            backgroundColor: palette.accent,
-                            borderRadius: 2,
-                        },
-                    },
-                },
-                // 메인 텍스트
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            color: '#ffffff',
-                            fontSize: 70,
-                            fontWeight: 700,
-                            textAlign: 'center' as const,
-                            lineHeight: 1.35,
-                            maxWidth: 900,
-                        },
-                        children: scene.onScreenText,
-                    },
-                },
-                // 나레이션
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            color: 'rgba(255,255,255,0.45)',
-                            fontSize: 28,
-                            textAlign: 'center' as const,
-                            maxWidth: 880,
-                            marginTop: 20,
-                        },
-                        children: narration,
-                    },
-                },
-                // 브랜드
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            color: 'rgba(255,255,255,0.2)',
-                            fontSize: 22,
-                            letterSpacing: 3,
-                            marginTop: 40,
-                        },
-                        children: 'TikTok Automation',
+                        children: [
+                            {
+                                type: 'div',
+                                props: {
+                                    style: {
+                                        color: 'rgba(255,255,255,0.7)',
+                                        fontSize: '36px',
+                                        fontWeight: 400,
+                                        textAlign: 'center' as const,
+                                        lineHeight: 1.6,
+                                        maxWidth: '850px',
+                                        fontStyle: 'italic' as const,
+                                    },
+                                    children: `"${scene.narrationText}"`,
+                                },
+                            },
+                            {
+                                type: 'div',
+                                props: {
+                                    style: {
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '24px',
+                                        opacity: 0.2,
+                                    },
+                                    children: [
+                                        { type: 'div', props: { style: { width: '80px', height: '1px', background: '#FFF' } } },
+                                        { type: 'div', props: { style: { fontSize: '24px', fontWeight: 700, letterSpacing: '8px' }, children: 'ALIVE VISION AI' } },
+                                        { type: 'div', props: { style: { width: '80px', height: '1px', background: '#FFF' } } },
+                                    ]
+                                }
+                            }
+                        ],
                     },
                 },
             ],
         },
     };
 
-    // SVG 생성 (loadFont()로 로드한 폰트 사용)
+    // SVG 생성
     const svg = await satori(vnode as any, {
         width: WIDTH,
         height: HEIGHT,
         fonts,
     });
 
-    // SVG → PNG (sharp 사용, Vercel 공식 지원)
+    // SVG → PNG
     const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
     return pngBuffer;
 }
