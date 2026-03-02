@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, checkSupabaseConfig } from '@/lib/supabaseAdmin';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * GET /api/jobs/[id]
@@ -7,9 +10,9 @@ import { supabaseAdmin, checkSupabaseConfig } from '@/lib/supabaseAdmin';
  */
 export async function GET(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
-    const { id } = params;
+    const { id } = await params;
     const requestId = `status_${Date.now()}`;
 
     const config = checkSupabaseConfig();
