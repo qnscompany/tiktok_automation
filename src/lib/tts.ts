@@ -10,10 +10,10 @@ function getGeminiTtsModel() {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // 2.0 Flash 모델이 오디오 생성을 지원합니다.
+    // v1beta가 실험적 기능을 가장 안전하게 지원합니다.
     return genAI.getGenerativeModel({
         model: "gemini-2.0-flash",
-    });
+    }, { apiVersion: 'v1beta' });
 }
 
 interface GenerateTtsArgs {
@@ -28,10 +28,12 @@ export async function generateTtsAudio({ text, voice = 'Aoede' }: GenerateTtsArg
     const model = getGeminiTtsModel();
 
     try {
+        console.log(`Generating TTS for: "${text.substring(0, 30)}..." with voice: ${voice}`);
+
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text }] }],
             generationConfig: {
-                // @ts-ignore - SDK 버전에 따라 타입이 없을 수 있으므로 무시
+                // @ts-ignore
                 responseModalities: ["AUDIO"],
                 speechConfig: {
                     voiceConfig: {
@@ -44,17 +46,25 @@ export async function generateTtsAudio({ text, voice = 'Aoede' }: GenerateTtsArg
         });
 
         const response = await result.response;
-        // 오디오 데이터는 response.audioContents가 아닌 inlineData 형태나 특정 필드로 올 수 있음
-        // 최신 SDK 기준으로는 response.data.fileData 또는 response.parts[0].inlineData 사용
-        const audioPart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
 
-        if (!audioPart || !audioPart.inlineData) {
-            throw new Error('No audio data received from Gemini');
+        // Debug: Log response structure
+        const candidates = response.candidates;
+        if (!candidates || candidates.length === 0) {
+            console.error('Gemini TTS: No candidates in response', JSON.stringify(response));
+            throw new Error('No candidates received from Gemini API');
         }
 
+        const audioPart = candidates[0].content?.parts?.find(p => p.inlineData);
+
+        if (!audioPart || !audioPart.inlineData) {
+            console.error('Gemini TTS: No inlineData in parts', JSON.stringify(candidates[0].content));
+            throw new Error('No audio data (inlineData) received from Gemini');
+        }
+
+        console.log('Gemini TTS: Audio generated successfully');
         return Buffer.from(audioPart.inlineData.data, 'base64');
     } catch (error: any) {
-        console.error('Gemini TTS Error:', error);
+        console.error('Gemini TTS Error Details:', error);
         throw new Error(`Gemini TTS generation failed: ${error.message}`);
     }
 }
