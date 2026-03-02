@@ -44,10 +44,7 @@ export async function generateFinalVideo(
         throw new Error('Incomplete assets for video generation');
     }
 
-    const tempDir = path.join(os.tmpdir(), `job-${jobId}`);
-    if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-    }
+    const tempPrefix = path.join(os.tmpdir(), `job-${jobId}`);
 
     const slidePaths: string[] = [];
     const audioInfos: AudioInfo[] = [];
@@ -55,8 +52,8 @@ export async function generateFinalVideo(
     try {
         // 2. 파일 다운로드 및 메타데이터 추출
         for (let i = 0; i < slides.length; i++) {
-            const slidePath = path.join(tempDir, `slide-${i}.png`);
-            const audioPath = path.join(tempDir, `audio-${i}.wav`);
+            const slidePath = `${tempPrefix}-slide-${i}.png`;
+            const audioPath = `${tempPrefix}-audio-${i}.wav`;
 
             await downloadFile(slides[i].content_json.publicUrl, slidePath);
             await downloadFile(audios[i].content_json.publicUrl, audioPath);
@@ -68,7 +65,7 @@ export async function generateFinalVideo(
             audioInfos.push({ path: audioPath, duration });
         }
 
-        const outputPath = path.join(tempDir, 'output.mp4');
+        const outputPath = `${tempPrefix}-output.mp4`;
 
         // 3. FFmpeg 합성
         await synthesizeVideo(slidePaths, audioInfos, outputPath);
@@ -77,12 +74,24 @@ export async function generateFinalVideo(
         const videoBuffer = fs.readFileSync(outputPath);
 
         // 5. 정리
-        cleanup(tempDir);
+        slidePaths.forEach(p => safeUnlink(p));
+        audioInfos.forEach(a => safeUnlink(a.path));
+        safeUnlink(outputPath);
 
         return videoBuffer;
     } catch (err) {
-        cleanup(tempDir);
+        // 에러 시에도 청소 시도
+        slidePaths.forEach(p => safeUnlink(p));
+        audioInfos.forEach(a => safeUnlink(a.path));
         throw err;
+    }
+}
+
+function safeUnlink(p: string) {
+    try {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (e) {
+        console.warn(`Failed to delete temp file ${p}:`, e);
     }
 }
 
