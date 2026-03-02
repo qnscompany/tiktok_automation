@@ -1,8 +1,10 @@
 {
-    "crons": [
-        {
-            "path": "/api/jobs/run",
-            "schedule": "0 0 * * *"
+    "functions": {
+        "src/app/api/jobs/run/route.ts": {
+            "includeFiles": "node_modules/ffmpeg-static/ffmpeg"
+        },
+        "src/app/api/debug/test-video/route.ts": {
+            "includeFiles": "node_modules/ffmpeg-static/ffmpeg"
         }
-    ]
+    }
 }
