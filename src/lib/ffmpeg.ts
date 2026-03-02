@@ -27,15 +27,19 @@ function setupFfmpeg() {
     if (ffprobeStatic) {
         const possibleFfprobePaths = [
             ffprobeStatic.path,
+            // Vercel에서 includeFiles로 포함시킨 경로
+            path.join(process.cwd(), 'node_modules/ffprobe-static/bin/linux/x64/ffprobe'),
             path.join(process.cwd(), 'node_modules/ffprobe-static/ffprobe'),
-            '/var/task/node_modules/ffprobe-static/ffprobe',
+            '/var/task/node_modules/ffprobe-static/bin/linux/x64/ffprobe',
             'ffprobe'
         ];
+        console.log('Searching for FFprobe...');
         for (const p of possibleFfprobePaths) {
+            console.log(`Checking FFprobe at: ${p}`);
             if (p === 'ffprobe' || fs.existsSync(p)) {
                 ffmpeg.setFfprobePath(p);
-                console.log(`FFprobe path set to: ${p}`);
-                break;
+                console.log(`SUCCESS: FFprobe path set to: ${p}`);
+                return;
             }
         }
     }
