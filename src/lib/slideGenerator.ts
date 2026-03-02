@@ -2,65 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TikTokScript, Scene } from './schema';
 import { renderSlide } from './slideRenderer';
 import { uploadSlide } from './storage';
+import { generateBackgrounds, BackgroundResult } from './backgroundGenerator';
 import { logJob, logError } from './log';
-
-// 배경을 생성할 scene index 목록
-const BG_SCENE_INDICES = [1, 4];
-
-interface BackgroundResult {
-    sceneIndex: number;
-    storagePath: string;
-    publicUrl: string;
-}
-
-/**
- * /api/jobs/gen-bg 엔드포인트를 호출하여 단일 씬의 배경을 생성합니다.
- * 각 호출은 독립적인 Vercel 함수로 실행되어 60s 제한을 우회합니다.
- * 실패 시 null 반환 (폴백 처리).
- */
-async function fetchBackground(
-    jobId: string,
-    scene: Scene,
-    topic: string
-): Promise<BackgroundResult | null> {
-    try {
-        // Vercel에서 VERCEL_URL은 현재 배포의 URL (alias 아닌 고유 URL)
-        // NEXT_PUBLIC_SITE_URL이 설정되어 있으면 우선 사용
-        // 그 다음 VERCEL_URL, 없으면 프로덕션 alias URL
-        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
-            ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-            ?? 'https://tiktok-automation-one.vercel.app';
-
-        const res = await fetch(`${baseUrl}/api/jobs/gen-bg`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId, scene, topic }),
-            signal: AbortSignal.timeout(90_000), // 90초 타임아웃
-        });
-
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`gen-bg HTTP ${res.status}: ${errText}`);
-        }
-
-        const data = await res.json();
-        if (data.result) {
-            return data.result as BackgroundResult;
-        }
-        return null;
-    } catch (err: any) {
-        logError(`fetchBackground failed for scene ${scene.index}`, err);
-        return null;
-    }
-}
 
 /**
  * 슬라이드 이미지 5장을 생성 → Supabase Storage 업로드 → assets 테이블 기록까지
  * 한번에 수행하는 오케스트레이터 함수입니다.
  *
  * Phase 5:
- * - Scene 1/4에 대해 /api/jobs/gen-bg를 순차 호출 (각각 독립 함수 실행)
- * - 배경 생성 실패 시 기존 그라데이션 폴백 (잡 실패 방지)
+ * - Scene 1/4에 대해 Imagen 배경 생성 (generateBackgrounds)
+ * - 배경 생성 실패 시 그라데이션 폴백 (잡 실패 방지)
+ * - Vercel 60s 제한 내에서 최대한 처리, 초과 시 폴백
  */
 export async function generateSlides(
     supabase: SupabaseClient,
@@ -70,29 +22,29 @@ export async function generateSlides(
 ): Promise<void> {
     logJob(jobId, 'RUNNING', 'Slide generation started', { slideCount: script.scenes.length });
 
-    // ── Phase 5: Scene 1/4 배경 이미지 순차 생성 ──────────────────
-    const bgMap = new Map<number, BackgroundResult>();
-    for (const scene of script.scenes) {
-        if (!BG_SCENE_INDICES.includes(scene.index)) continue;
+    // ── Phase 5: Scene 1/4 배경 이미지 생성 ──────────────────
+    // Promise.race를 통해 50초 안에 완료되지 않으면 빈 Map으로 폴백
+    let bgMap = new Map<number, BackgroundResult>();
+    try {
+        const timeoutPromise = new Promise<Map<number, BackgroundResult>>((resolve) => {
+            setTimeout(() => {
+                logError('Background generation timed out after 50s, falling back to gradient', null);
+                resolve(new Map());
+            }, 50_000);
+        });
 
-        logJob(jobId, 'RUNNING', `Requesting background for scene ${scene.index}...`);
-        const result = await fetchBackground(jobId, scene, topic);
-        if (result) {
-            bgMap.set(scene.index, result);
-            logJob(jobId, 'RUNNING', `Background ready for scene ${scene.index}`, { storagePath: result.storagePath });
-        } else {
-            logJob(jobId, 'RUNNING', `Scene ${scene.index} background fallback (gradient)`);
-        }
+        const bgPromise = generateBackgrounds(supabase, jobId, script.scenes, topic);
+        bgMap = await Promise.race([bgPromise, timeoutPromise]);
+        logJob(jobId, 'RUNNING', `Backgrounds done: ${bgMap.size}/2`);
+    } catch (err: any) {
+        logError('generateBackgrounds failed, falling back to gradient for all scenes', err);
     }
-
-    logJob(jobId, 'RUNNING', `Backgrounds done: ${bgMap.size}/2`);
 
     // ── 5장 슬라이드 순차 생성 ─────────────────────────────────────
     for (const scene of script.scenes) {
         const index = scene.index;
 
         try {
-            // 배경 이미지 버퍼 (있으면 합성, 없으면 그라데이션)
             const bgResult = bgMap.get(index);
             let bgBuffer: Buffer | undefined;
 
