@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { TikTokScript } from './schema';
+import type { TikTokScript, Scene } from './schema';
 import { renderSlide } from './slideRenderer';
 import { uploadSlide } from './storage';
 import { logJob, logError } from './log';
@@ -20,7 +20,7 @@ interface BackgroundResult {
  */
 async function fetchBackground(
     jobId: string,
-    scene: { index: number; onScreenText: string; narrationText: string; duration_sec: number },
+    scene: Scene,
     topic: string
 ): Promise<BackgroundResult | null> {
     try {
