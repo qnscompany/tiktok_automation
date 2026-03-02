@@ -14,7 +14,7 @@ export async function GET() {
         const buf = await generateImagenPng({
             prompt: 'A simple purple abstract background with neon grid lines, vertical 9:16 format, no text.',
         });
-        return new Response(buf, {
+        return new Response(new Uint8Array(buf), {
             status: 200,
             headers: { 'Content-Type': 'image/png' },
         });
