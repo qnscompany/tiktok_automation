@@ -1,5 +1,7 @@
 import satori from 'satori';
 import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
 import type { Scene } from './schema';
 
 // 슬라이드 크기 (틱톡 9:16)
@@ -8,9 +10,9 @@ const HEIGHT = 1920;
 
 // 배경 색상 세트 (index별 순환)
 const BACKGROUNDS = [
-    { bg: '#1a1a2e', accent: '#e94560', text: '#ffffff' },  // 딥 블루
-    { bg: '#0f3460', accent: '#f5a623', text: '#ffffff' },  // 미드나잇 블루
-    { bg: '#1b4332', accent: '#52b788', text: '#ffffff' },  // 다크 그린
+    { bg: '#1a1a2e', accent: '#e94560' },  // 딥 블루
+    { bg: '#0f3460', accent: '#f5a623' },  // 미드나잇 블루
+    { bg: '#1b4332', accent: '#52b788' },  // 다크 그린
 ];
 
 /**
@@ -21,29 +23,20 @@ function truncate(text: string, max = 38): string {
 }
 
 /**
- * 폰트 데이터를 가져옵니다. satori는 폰트가 필수입니다.
- * 여러 CDN에서 시도하여 실패하면 에러를 던집니다.
+ * 번들된 폰트 파일을 읽어옵니다 (@fontsource/noto-sans 패키지에서).
+ * CDN fetch 없이 안전하게 로드됩니다.
  */
-async function loadFont(): Promise<ArrayBuffer> {
-    const urls = [
-        // Noto Sans KR (Google Fonts CDN - 한글 지원)
-        'https://fonts.gstatic.com/s/notosanskr/v36/Bt8-LBNWM_ALPaAiU5B5-TatLq3F2TTKIS4Hqhwl.woff',
-        // 대안: Noto Sans (라틴 전용, 더 가벼움)
-        'https://fonts.gstatic.com/s/notosans/v36/o-0IIpQlx3QUlC5A4PNr5TRGSMxW8JMDPA.woff',
-    ];
-
-    for (const url of urls) {
-        try {
-            const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-            if (res.ok) {
-                return await res.arrayBuffer();
-            }
-        } catch {
-            // 다음 URL 시도
-        }
-    }
-
-    throw new Error('Failed to load font for slide rendering. All CDN URLs failed.');
+function loadFont(): Buffer {
+    // @fontsource/noto-sans 패키지에 포함된 woff 파일을 직접 읽음
+    const fontPath = path.join(
+        process.cwd(),
+        'node_modules',
+        '@fontsource',
+        'noto-sans',
+        'files',
+        'noto-sans-latin-400-normal.woff'
+    );
+    return fs.readFileSync(fontPath);
 }
 
 /**
@@ -58,8 +51,8 @@ export async function renderSlide(
     const palette = BACKGROUNDS[(index - 1) % BACKGROUNDS.length];
     const narration = truncate(scene.narrationText);
 
-    // 폰트 로드
-    const fontData = await loadFont();
+    // 폰트 로드 (동기식, node_modules에서 직접 읽음)
+    const fontData = loadFont();
 
     // satori VNode 정의 (React-style 객체)
     const vnode = {
