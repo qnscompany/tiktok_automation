@@ -31,31 +31,38 @@ const THEMES = [
 ];
 
 /**
- * 폰트 데이터를 로드합니다.
- * Vercel 빌드 시 node_modules 내의 폰트 파일이 포함되도록 경로를 명확히 지정합니다.
+ * 폰트 데이터를 로드합니다 (TTF 지원).
+ * Vercel 환경에서는 public 폴더의 파일을 process.cwd() 기반으로 읽어옵니다.
  */
 function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
-    // 폰트 파일들이 위치한 절대 경로
-    const basePath = path.join(process.cwd(), 'node_modules', '@fontsource', 'noto-sans-kr', 'files');
+    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansKR-Bold.ttf');
 
-    // Bold(700) 웨이트의 모든 서브셋 파일을 찾습니다.
-    // satori는 동일한 name의 여러 폰트를 받으면 자동으로 필요한 subset을 선택해 사용합니다.
-    const files = fs.readdirSync(basePath).filter(f => f.includes('noto-sans-kr') && f.includes('-700-normal.woff'));
+    if (!fs.existsSync(fontPath)) {
+        // 폴백: 만약 public/fonts에 없다면 node_modules에서 찾기
+        console.warn('Custom TTF font not found, falling back to node_modules...');
+        const basePath = path.join(process.cwd(), 'node_modules', '@fontsource', 'noto-sans-kr', 'files');
+        const files = fs.readdirSync(basePath).filter(f => f.includes('noto-sans-kr') && f.includes('-700-normal.woff'));
 
-    if (files.length === 0) {
-        throw new Error('No Noto Sans KR Bold fonts found in node_modules.');
+        if (files.length === 0) throw new Error('No fonts found at all.');
+
+        return files.map(filename => {
+            const buf = fs.readFileSync(path.join(basePath, filename));
+            const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+            return { name: 'NotoSansKR', data: arrayBuffer, weight: 700, style: 'normal' };
+        });
     }
 
-    return files.map(filename => {
-        const buf = fs.readFileSync(path.join(basePath, filename));
-        const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-        return {
+    const buf = fs.readFileSync(fontPath);
+    const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+
+    return [
+        {
             name: 'NotoSansKR',
             data: arrayBuffer,
             weight: 700,
             style: 'normal',
-        };
-    });
+        }
+    ];
 }
 
 /**
