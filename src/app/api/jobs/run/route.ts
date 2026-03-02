@@ -3,6 +3,7 @@ import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { generateTikTokScript, getGeminiClient } from '@/lib/gemini';
 import { generateSlides } from '@/lib/slideGenerator';
+import { generateAudioAssets } from '@/lib/audioGenerator';
 import { generateBackgrounds } from '@/lib/backgroundGenerator';
 import { renderSlide } from '@/lib/slideRenderer';
 import { uploadSlide } from '@/lib/storage';
@@ -76,9 +77,12 @@ export async function GET(request: Request) {
             // ── Step 2: 슬라이드 5장 생성 (그라데이션 배경) ──────────
             await generateSlides(supabase, jobId, script, job.topic);
 
+            // ── Step 2.1: TTS 오디오 생성 (나레이션) ──────────────────
+            await generateAudioAssets(supabase, jobId, script.scenes);
+
             // ── Step 3: 작업 완료 처리 ────────────────────────────
             await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
-            logJob(jobId, 'DONE', 'Job completed (5 slides with gradient backgrounds)');
+            logJob(jobId, 'DONE', 'Job completed (5 slides + 5 audio narration)');
 
             // ── Step 4: after() — 응답 후 배경 생성 + 슬라이드 재렌더 
             after(async () => {

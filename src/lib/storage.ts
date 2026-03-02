@@ -73,3 +73,38 @@ export async function uploadBackground(
         publicUrl: urlData.publicUrl,
     };
 }
+
+/**
+ * 나레이션 오디오 파일을 Supabase Storage에 업로드합니다.
+ * 경로 규칙: jobs/{jobId}/audio/{sceneIndex}.mp3
+ *
+ * @returns { storagePath, publicUrl }
+ */
+export async function uploadAudio(
+    supabase: SupabaseClient,
+    jobId: string,
+    sceneIndex: number,
+    audioBuffer: Buffer
+): Promise<{ storagePath: string; publicUrl: string }> {
+    const storagePath = `jobs/${jobId}/audio/${sceneIndex}.mp3`;
+
+    const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(storagePath, audioBuffer, {
+            contentType: 'audio/mpeg',
+            upsert: true,
+        });
+
+    if (uploadError) {
+        throw new Error(`Storage upload failed for audio scene ${sceneIndex}: ${uploadError.message}`);
+    }
+
+    const { data: urlData } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(storagePath);
+
+    return {
+        storagePath,
+        publicUrl: urlData.publicUrl,
+    };
+}
