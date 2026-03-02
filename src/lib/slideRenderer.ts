@@ -24,7 +24,7 @@ function truncate(text: string, max = 38): string {
 
 /**
  * 번들된 한국어 폰트 파일들을 읽어옵니다 (@fontsource/noto-sans-kr 패키지에서).
- * satori는 여러 subset을 배열로 등록하는 방식으로 한글을 지원합니다.
+ * 디렉토리의 모든 woff subset 파일을 로드하여 완전한 한글 커버리지를 보장합니다.
  */
 function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
     const basePath = path.join(
@@ -35,19 +35,15 @@ function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
         'files'
     );
 
-    // 한글 커버리지를 위해 주요 subset 파일들을 로드 (0~10번 = 기본 한글 범위)
-    const subsets = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    const fonts: Parameters<typeof satori>[1]['fonts'] = [];
+    // 디렉토리의 모든 400-normal.woff 파일을 자동으로 읽음
+    const files = fs.readdirSync(basePath).filter(
+        f => f.endsWith('-400-normal.woff')
+    );
 
-    for (const i of subsets) {
-        const fontPath = path.join(basePath, `noto-sans-kr-${i}-400-normal.woff`);
-        try {
-            const data = fs.readFileSync(fontPath);
-            fonts.push({ name: 'NotoSansKR', data: data.buffer, weight: 400, style: 'normal' });
-        } catch {
-            // 파일이 없으면 스킵
-        }
-    }
+    const fonts: Parameters<typeof satori>[1]['fonts'] = files.map(filename => {
+        const data = fs.readFileSync(path.join(basePath, filename));
+        return { name: 'NotoSansKR', data: data.buffer, weight: 400 as const, style: 'normal' as const };
+    });
 
     if (fonts.length === 0) {
         throw new Error('No Korean font files found. Check @fontsource/noto-sans-kr installation.');
