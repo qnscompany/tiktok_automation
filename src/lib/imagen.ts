@@ -1,8 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 
 // ── 상수 ──────────────────────────────────────────────────
-// 이미지 생성에 사용할 Gemini 모델. 필요 시 교체 가능.
-export const IMAGEN_MODEL = 'gemini-2.0-flash-preview-image-generation';
+// Gemini 이미지 생성 모델. Gemini API에서 이미지 생성을 지원하는 모델.
+// gemini-3.1-flash-image-preview (공식 문서 기준)
+export const IMAGEN_MODEL = 'gemini-3.1-flash-image-preview';
 
 // ── 타입 ──────────────────────────────────────────────────
 interface GenerateImagenPngParams {
