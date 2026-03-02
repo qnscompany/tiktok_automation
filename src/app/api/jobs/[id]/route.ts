@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, checkSupabaseConfig } from '@/lib/supabaseAdmin';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,14 +16,19 @@ export async function GET(
     const { id } = await params;
     const requestId = `status_${Date.now()}`;
 
-    const config = checkSupabaseConfig();
-    if (!config.valid) {
-        return NextResponse.json({ error: 'Config error', details: config.error, requestId }, { status: 500 });
+    // 1. 초기화 및 환경 변수 체크 (핸들러 내부 수행)
+    const { client: supabase, error: configError } = getSupabaseAdmin();
+    if (configError || !supabase) {
+        return NextResponse.json({
+            error: 'Configuration Error',
+            details: configError,
+            requestId
+        }, { status: 500 });
     }
 
     try {
         // 작업 정보와 연관된 자산(assets)을 함께 가져옴
-        const { data: job, error: jobError } = await supabaseAdmin!
+        const { data: job, error: jobError } = await supabase
             .from('jobs')
             .select('*, assets(*)')
             .eq('id', id)
@@ -34,6 +40,10 @@ export async function GET(
 
         return NextResponse.json({ ...job, requestId });
     } catch (error: any) {
-        return NextResponse.json({ error: 'Internal server error', details: error.message, requestId }, { status: 500 });
+        return NextResponse.json({
+            error: 'Internal server error',
+            details: error.message,
+            requestId
+        }, { status: 500 });
     }
 }

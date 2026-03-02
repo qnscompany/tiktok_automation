@@ -31,7 +31,7 @@ export function logJob(jobId: string, status: 'START' | 'RUNNING' | 'DONE' | 'FA
     }));
 }
 
-export function logApi(requestId: string, endpoint: string, status: 'SUCCESS' | 'FAILURE' | 'RETRY', message: string, meta?: Record<string, any>) {
+export function logApi(requestId: string, endpoint: string, status: 'SUCCESS' | 'FAILURE' | 'RETRY' | 'INFO', message: string, meta?: Record<string, any>) {
     console.log(JSON.stringify({
         level: 'API',
         requestId,

@@ -1,56 +1,52 @@
 import { NextResponse } from 'next/server';
-import { generateTikTokScript } from '@/lib/gemini';
-import { GenerateScriptRequest } from '@/lib/schema';
+import { generateTikTokScript, getGeminiClient } from '@/lib/gemini';
 import { logApi, logError } from '@/lib/log';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+/**
+ * POST /api/generate/script
+ * 주제를 입력받아 바로 스크립트를 생성해 반환합니다 (DB 저장 없음).
+ */
 export async function POST(request: Request) {
-    const requestId = `req_${Date.now()}`;
-    let body: GenerateScriptRequest;
+    const requestId = `gen_${Date.now()}`;
 
-    try {
-        body = await request.json();
-    } catch (e) {
-        return NextResponse.json({ error: 'Invalid JSON body', requestId }, { status: 400 });
-    }
-
-    const { topic, tone, audience } = body;
-
-    if (!topic) {
-        return NextResponse.json({ error: 'Topic is required', requestId }, { status: 400 });
-    }
-
-    logApi(requestId, '/api/generate/script', 'SUCCESS', 'Request received', { topic });
-
-    try {
-        let script;
-        try {
-            // 1차 시도
-            script = await generateTikTokScript(topic, tone, audience);
-        } catch (error) {
-            logApi(requestId, '/api/generate/script', 'RETRY', 'First attempt failed, retrying...', { error });
-            // 2차 시도 (재시도)
-            script = await generateTikTokScript(topic, tone, audience);
-        }
-
-        logApi(requestId, '/api/generate/script', 'SUCCESS', 'Script generated successfully');
-        return NextResponse.json({ ...script, requestId });
-
-    } catch (error: any) {
-        logError('Failed to generate script after retries', error, { requestId, topic });
-
-        let errorMessage = 'Failed to generate script';
-        if (error.message.includes('GEMINI_API_KEY')) {
-            errorMessage = 'Gemini API Key is missing. Please check .env.local';
-        } else if (error instanceof SyntaxError) {
-            errorMessage = 'AI returned invalid JSON format';
-        } else if (error.name === 'ZodError') {
-            errorMessage = 'AI returned JSON that does not match the required schema';
-        }
-
+    // 1. 초기화 및 환경 변수 체크 (핸들러 내부 수행)
+    const { error: geminiError } = getGeminiClient();
+    if (geminiError) {
         return NextResponse.json({
-            error: errorMessage,
-            details: error.message,
+            error: 'Configuration Error',
+            details: geminiError,
             requestId
         }, { status: 500 });
+    }
+
+    try {
+        const body = await request.json();
+        const { topic, tone, audience } = body;
+
+        if (!topic) {
+            return NextResponse.json({ error: 'Topic is required', requestId }, { status: 400 });
+        }
+
+        logApi(requestId, '/api/generate/script', 'INFO', 'Script generation started', { topic });
+
+        try {
+            const script = await generateTikTokScript(topic, tone, audience);
+            logApi(requestId, '/api/generate/script', 'SUCCESS', 'Script generated successfully');
+            return NextResponse.json({ ...script, requestId });
+        } catch (error: any) {
+            logError('Gemini execution failed', error, { requestId, topic });
+            return NextResponse.json({
+                error: 'Generation failed',
+                details: error.message,
+                requestId
+            }, { status: 500 });
+        }
+
+    } catch (e: any) {
+        return NextResponse.json({ error: 'Invalid JSON body or request format', details: e.message, requestId }, { status: 400 });
     }
 }
