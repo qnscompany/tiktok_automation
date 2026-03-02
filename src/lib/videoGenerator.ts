@@ -154,7 +154,7 @@ function synthesizeVideo(slidePaths: string[], audioInfos: AudioInfo[], outputPa
             .outputOptions([
                 '-pix_fmt yuv420p',
                 '-r 30',
-                '-vsync vfr',
+                '-fps_mode cfr', // 고정 프레임레이트(CFR) 강제하여 충돌 방지 및 싱크 보호
                 '-y'
             ])
             .on('start', (cmd) => {
