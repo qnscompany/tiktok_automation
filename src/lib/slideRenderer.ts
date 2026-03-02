@@ -23,20 +23,37 @@ function truncate(text: string, max = 38): string {
 }
 
 /**
- * 번들된 폰트 파일을 읽어옵니다 (@fontsource/noto-sans 패키지에서).
- * CDN fetch 없이 안전하게 로드됩니다.
+ * 번들된 한국어 폰트 파일들을 읽어옵니다 (@fontsource/noto-sans-kr 패키지에서).
+ * satori는 여러 subset을 배열로 등록하는 방식으로 한글을 지원합니다.
  */
-function loadFont(): Buffer {
-    // @fontsource/noto-sans 패키지에 포함된 woff 파일을 직접 읽음
-    const fontPath = path.join(
+function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
+    const basePath = path.join(
         process.cwd(),
         'node_modules',
         '@fontsource',
-        'noto-sans',
-        'files',
-        'noto-sans-latin-400-normal.woff'
+        'noto-sans-kr',
+        'files'
     );
-    return fs.readFileSync(fontPath);
+
+    // 한글 커버리지를 위해 주요 subset 파일들을 로드 (0~10번 = 기본 한글 범위)
+    const subsets = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const fonts: Parameters<typeof satori>[1]['fonts'] = [];
+
+    for (const i of subsets) {
+        const fontPath = path.join(basePath, `noto-sans-kr-${i}-400-normal.woff`);
+        try {
+            const data = fs.readFileSync(fontPath);
+            fonts.push({ name: 'NotoSansKR', data: data.buffer, weight: 400, style: 'normal' });
+        } catch {
+            // 파일이 없으면 스킵
+        }
+    }
+
+    if (fonts.length === 0) {
+        throw new Error('No Korean font files found. Check @fontsource/noto-sans-kr installation.');
+    }
+
+    return fonts;
 }
 
 /**
@@ -51,8 +68,8 @@ export async function renderSlide(
     const palette = BACKGROUNDS[(index - 1) % BACKGROUNDS.length];
     const narration = truncate(scene.narrationText);
 
-    // 폰트 로드 (동기식, node_modules에서 직접 읽음)
-    const fontData = loadFont();
+    // 폰트 로드 (한국어 지원 subset들 동기식 로드)
+    const fonts = loadFonts();
 
     // satori VNode 정의 (React-style 객체)
     const vnode = {
@@ -163,7 +180,7 @@ export async function renderSlide(
     const svg = await satori(vnode as any, {
         width: WIDTH,
         height: HEIGHT,
-        fonts: [{ name: 'NotoSans', data: fontData, weight: 400, style: 'normal' }],
+        fonts,
     });
 
     // SVG → PNG (sharp 사용, Vercel 공식 지원)
