@@ -38,7 +38,9 @@ export async function GET(request: Request) {
         console.error('Debug Video Synthesis Error:', e);
         return NextResponse.json({
             error: e.message,
-            stack: e.stack
+            stack: e.stack,
+            ffmpegError: e.ffmpegError,
+            command: e.command
         }, { status: 500 });
     }
 }

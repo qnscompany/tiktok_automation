@@ -155,14 +155,19 @@ function synthesizeVideo(slidePaths: string[], audioInfos: AudioInfo[], outputPa
                 '-pix_fmt yuv420p',
                 '-r 30',
                 '-vsync vfr',
-                '-y' // Overwrite output file
+                '-y'
             ])
-            .on('start', (cmd) => console.log('FFmpeg command:', cmd))
+            .on('start', (cmd) => {
+                console.log('FFmpeg command:', cmd);
+                (command as any)._fullCommand = cmd;
+            })
             .on('error', (err, stdout, stderr) => {
                 console.error('FFmpeg failed:', err.message);
                 console.error('FFmpeg stderr:', stderr);
-                (err as any).ffmpegError = stderr;
-                reject(err);
+                const errorWithDetails = new Error(err.message);
+                (errorWithDetails as any).ffmpegError = stderr;
+                (errorWithDetails as any).command = (command as any)._fullCommand;
+                reject(errorWithDetails);
             })
             .on('end', () => {
                 console.log('Video synthesis complete');
