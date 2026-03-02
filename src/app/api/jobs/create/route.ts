@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, checkSupabaseConfig } from '@/lib/supabaseAdmin';
 import { logJob } from '@/lib/log';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * POST /api/jobs/create
  * Supabase DB에 job 레코드 생성

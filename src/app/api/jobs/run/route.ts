@@ -3,8 +3,9 @@ import { supabaseAdmin, checkSupabaseConfig } from '@/lib/supabaseAdmin';
 import { generateTikTokScript } from '@/lib/gemini';
 import { logJob, logError } from '@/lib/log';
 
-// Vercel Cron을 위한 dynamic 설정 (정적 생성 방지)
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * GET /api/jobs/run
