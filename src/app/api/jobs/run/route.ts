@@ -5,8 +5,9 @@ import { generateTikTokScript, getGeminiClient } from '@/lib/gemini';
 import { generateSlides } from '@/lib/slideGenerator';
 import { generateAudioAssets } from '@/lib/audioGenerator';
 import { generateBackgrounds } from '@/lib/backgroundGenerator';
+import { generateFinalVideo } from '@/lib/videoGenerator';
 import { renderSlide } from '@/lib/slideRenderer';
-import { uploadSlide } from '@/lib/storage';
+import { uploadSlide, uploadVideo } from '@/lib/storage';
 import { logJob, logError } from '@/lib/log';
 import type { TikTokScript } from '@/lib/schema';
 
@@ -140,6 +141,25 @@ export async function GET(request: Request) {
                     }
 
                     logJob(jobId, 'RUNNING', 'Background generation complete.');
+
+                    // ── Step 5: 최종 비디오 합성 ────────────────────
+                    logJob(jobId, 'RUNNING', 'Synthesizing final video with FFmpeg...');
+                    const videoBuffer = await generateFinalVideo(bgSupabase, jobId);
+                    const { storagePath, publicUrl } = await uploadVideo(bgSupabase, jobId, videoBuffer);
+
+                    // Assets 테이블에 비디오 정보 기록
+                    await bgSupabase.from('assets').insert([{
+                        job_id: jobId,
+                        type: 'final_video',
+                        content_json: {
+                            storagePath,
+                            publicUrl,
+                            format: 'mp4',
+                            resolution: '1080x1920'
+                        }
+                    }]);
+
+                    logJob(jobId, 'DONE', 'Final video synthesized and uploaded.');
                 } catch (bgErr: any) {
                     logError(`after(): background generation failed for job ${jobId}`, bgErr);
                 }

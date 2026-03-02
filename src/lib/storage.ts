@@ -96,15 +96,40 @@ export async function uploadAudio(
         });
 
     if (uploadError) {
-        throw new Error(`Storage upload failed for audio scene ${sceneIndex}: ${uploadError.message}`);
+        throw new Error(`Failed to upload audio: ${uploadError.message}`);
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: { publicUrl } } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(storagePath);
 
-    return {
-        storagePath,
-        publicUrl: urlData.publicUrl,
-    };
+    return { storagePath, publicUrl };
+}
+
+/**
+ * 최종 합성된 비디오 파일을 Supabase Storage에 업로드합니다.
+ */
+export async function uploadVideo(
+    supabase: SupabaseClient,
+    jobId: string,
+    videoBuffer: Buffer
+): Promise<{ storagePath: string; publicUrl: string }> {
+    const storagePath = `jobs/${jobId}/final_video.mp4`;
+
+    const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(storagePath, videoBuffer, {
+            contentType: 'video/mp4',
+            upsert: true,
+        });
+
+    if (uploadError) {
+        throw new Error(`Failed to upload video: ${uploadError.message}`);
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(storagePath);
+
+    return { storagePath, publicUrl };
 }

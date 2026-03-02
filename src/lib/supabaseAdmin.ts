@@ -1,13 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-/**
- * Supabase Admin 클라이언트를 안전하게 생성하여 반환합니다.
- * 모듈 스코프에서 즉시 실행되지 않도록 함수로 래핑합니다.
- */
 export function getSupabaseAdmin() {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
     if (!supabaseUrl || !supabaseServiceKey) {
         return {
             client: null,
@@ -32,6 +28,9 @@ export function getSupabaseAdmin() {
  * 환경 변수 체크 유틸리티
  */
 export function checkSupabaseConfig() {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
     return {
         valid: !!(supabaseUrl && supabaseServiceKey),
         error: !(supabaseUrl && supabaseServiceKey) ? 'Missing environment variables' : null
