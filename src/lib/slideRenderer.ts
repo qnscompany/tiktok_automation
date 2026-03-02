@@ -41,8 +41,10 @@ function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
     );
 
     const fonts: Parameters<typeof satori>[1]['fonts'] = files.map(filename => {
-        const data = fs.readFileSync(path.join(basePath, filename));
-        return { name: 'NotoSansKR', data: data.buffer, weight: 400 as const, style: 'normal' as const };
+        const buf = fs.readFileSync(path.join(basePath, filename));
+        // Node.js Buffer.buffer는 메모리 풀 공유 가능 → byteOffset/byteLength로 정확히 slice
+        const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        return { name: 'NotoSansKR', data: arrayBuffer, weight: 400 as const, style: 'normal' as const };
     });
 
     if (fonts.length === 0) {
@@ -81,6 +83,7 @@ export async function renderSlide(
                 justifyContent: 'center',
                 padding: '80px',
                 gap: '40px',
+                fontFamily: 'NotoSansKR',
             },
             children: [
                 // 슬라이드 번호
