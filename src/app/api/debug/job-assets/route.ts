@@ -56,7 +56,8 @@ export async function GET(request: Request) {
             summary: {
                 totalAssets: assets?.length || 0,
                 scriptJson: assets?.filter(a => a.type === 'script_json').length || 0,
-                slideImages: assets?.filter(a => a.type === 'slide_image').length || 0
+                slideImages: assets?.filter(a => a.type === 'slide_image').length || 0,
+                bgImages: assets?.filter(a => a.type === 'bg_image').length || 0,
             }
         });
     } catch (error: any) {

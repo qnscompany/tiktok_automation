@@ -78,18 +78,45 @@ function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
 
 /**
  * 단일 슬라이드 이미지를 렌더링합니다.
+ *
+ * @param bgImageBuffer - (선택) Imagen으로 생성한 배경 이미지 PNG Buffer.
+ *   제공된 경우: Sharp로 1080x1920 cover 크롭 → Satori SVG overlay 합성
+ *   없는 경우: 기존 그라데이션 배경 템플릿 사용
  */
 export async function renderSlide(
     scene: Scene,
     topic: string,
-    index: number
+    index: number,
+    bgImageBuffer?: Buffer
 ): Promise<Buffer> {
     const theme = THEMES[(index - 1) % THEMES.length];
 
     // 폰트 로드 (동기식으로 수행하거나 위에서 캐싱 권장)
     const fonts = loadFonts();
 
-    // satori VNode 정의
+    if (bgImageBuffer) {
+        // ── 배경 이미지 합성 모드 ──────────────────────────────────
+        // 1. 배경 이미지를 1080x1920으로 cover 크롭
+        const croppedBg = await sharp(bgImageBuffer)
+            .resize(WIDTH, HEIGHT, { fit: 'cover', position: 'centre' })
+            .png()
+            .toBuffer();
+
+        // 2. 글래스모피즘 오버레이 SVG를 Satori로 생성 (배경 투명)
+        const overlayVnode = buildOverlayVnode(scene, topic, index, theme);
+        const overlaySvg = await satori(overlayVnode as any, { width: WIDTH, height: HEIGHT, fonts });
+        const overlayPng = await sharp(Buffer.from(overlaySvg)).png().toBuffer();
+
+        // 3. 배경 + 오버레이 합성
+        const compositedBuffer = await sharp(croppedBg)
+            .composite([{ input: overlayPng, top: 0, left: 0 }])
+            .png()
+            .toBuffer();
+
+        return compositedBuffer;
+    }
+
+    // ── 기존 그라데이션 배경 모드 ──────────────────────────────────
     const vnode = {
         type: 'div',
         props: {
@@ -104,134 +131,159 @@ export async function renderSlide(
                 padding: '120px 80px',
                 fontFamily: 'SlideFont',
             },
-            children: [
-                // Header: Scene Indicator
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            padding: '16px 40px',
-                            borderRadius: '100px',
-                            background: 'rgba(255,255,255,0.08)',
-                            border: `1px solid ${theme.border}`,
-                            color: theme.accent,
-                            fontSize: '32px',
-                            fontWeight: 700,
-                            letterSpacing: '2px',
-                        },
-                        children: `SCENE 0${index}`,
-                    },
-                },
-
-                // Content: Main Glass Card
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            display: 'flex',
-                            flexDirection: 'column' as const,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '920px',
-                            minHeight: '800px',
-                            padding: '80px',
-                            borderRadius: '64px',
-                            background: theme.glass,
-                            border: `1px solid ${theme.border}`,
-                            boxShadow: '0 40px 100px -20px rgba(0, 0, 0, 0.6)',
-                        },
-                        children: [
-                            {
-                                type: 'div',
-                                props: {
-                                    style: {
-                                        color: theme.accent,
-                                        fontSize: '28px',
-                                        fontWeight: 500,
-                                        letterSpacing: '6px',
-                                        marginBottom: '60px',
-                                        opacity: 0.8,
-                                    },
-                                    children: topic.toUpperCase(),
-                                },
-                            },
-                            {
-                                type: 'div',
-                                props: {
-                                    style: {
-                                        color: '#FFFFFF',
-                                        fontSize: '92px',
-                                        fontWeight: 700,
-                                        textAlign: 'center' as const,
-                                        lineHeight: 1.2,
-                                        wordBreak: 'keep-all' as const,
-                                        textShadow: '0 10px 30px rgba(0,0,0,0.4)',
-                                    },
-                                    children: scene.onScreenText,
-                                },
-                            },
-                        ],
-                    },
-                },
-
-                // Footer: Narration & Branding
-                {
-                    type: 'div',
-                    props: {
-                        style: {
-                            display: 'flex',
-                            flexDirection: 'column' as const,
-                            alignItems: 'center',
-                            width: '100%',
-                            gap: '80px',
-                        },
-                        children: [
-                            {
-                                type: 'div',
-                                props: {
-                                    style: {
-                                        color: 'rgba(255,255,255,0.7)',
-                                        fontSize: '36px',
-                                        fontWeight: 400,
-                                        textAlign: 'center' as const,
-                                        lineHeight: 1.6,
-                                        maxWidth: '850px',
-                                        fontStyle: 'italic' as const,
-                                    },
-                                    children: `"${scene.narrationText}"`,
-                                },
-                            },
-                            {
-                                type: 'div',
-                                props: {
-                                    style: {
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '24px',
-                                        opacity: 0.2,
-                                    },
-                                    children: [
-                                        { type: 'div', props: { style: { width: '80px', height: '1px', background: '#FFF' } } },
-                                        { type: 'div', props: { style: { fontSize: '24px', fontWeight: 700, letterSpacing: '8px' }, children: 'ALIVE VISION AI' } },
-                                        { type: 'div', props: { style: { width: '80px', height: '1px', background: '#FFF' } } },
-                                    ]
-                                }
-                            }
-                        ],
-                    },
-                },
-            ],
+            children: buildChildren(scene, topic, index, theme),
         },
     };
 
-    // SVG 생성
-    const svg = await satori(vnode as any, {
-        width: WIDTH,
-        height: HEIGHT,
-        fonts,
-    });
-
-    // SVG → PNG
+    const svg = await satori(vnode as any, { width: WIDTH, height: HEIGHT, fonts });
     const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
     return pngBuffer;
+}
+
+// ── 공통 자식 요소 빌더 ────────────────────────────────────────
+
+function buildChildren(scene: Scene, topic: string, index: number, theme: typeof THEMES[0]) {
+    return [
+        // Header: Scene Indicator
+        {
+            type: 'div',
+            props: {
+                style: {
+                    padding: '16px 40px',
+                    borderRadius: '100px',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: `1px solid ${theme.border}`,
+                    color: theme.accent,
+                    fontSize: '32px',
+                    fontWeight: 700,
+                    letterSpacing: '2px',
+                },
+                children: `SCENE 0${index}`,
+            },
+        },
+        // Content: Main Glass Card
+        {
+            type: 'div',
+            props: {
+                style: {
+                    display: 'flex',
+                    flexDirection: 'column' as const,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '920px',
+                    minHeight: '800px',
+                    padding: '80px',
+                    borderRadius: '64px',
+                    background: theme.glass,
+                    border: `1px solid ${theme.border}`,
+                    boxShadow: '0 40px 100px -20px rgba(0, 0, 0, 0.6)',
+                },
+                children: [
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                color: theme.accent,
+                                fontSize: '28px',
+                                fontWeight: 500,
+                                letterSpacing: '6px',
+                                marginBottom: '60px',
+                                opacity: 0.8,
+                            },
+                            children: topic.toUpperCase(),
+                        },
+                    },
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                color: '#FFFFFF',
+                                fontSize: '92px',
+                                fontWeight: 700,
+                                textAlign: 'center' as const,
+                                lineHeight: 1.2,
+                                wordBreak: 'keep-all' as const,
+                                textShadow: '0 10px 30px rgba(0,0,0,0.4)',
+                            },
+                            children: scene.onScreenText,
+                        },
+                    },
+                ],
+            },
+        },
+        // Footer: Narration & Branding
+        {
+            type: 'div',
+            props: {
+                style: {
+                    display: 'flex',
+                    flexDirection: 'column' as const,
+                    alignItems: 'center',
+                    width: '100%',
+                    gap: '80px',
+                },
+                children: [
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                color: 'rgba(255,255,255,0.7)',
+                                fontSize: '36px',
+                                fontWeight: 400,
+                                textAlign: 'center' as const,
+                                lineHeight: 1.6,
+                                maxWidth: '850px',
+                                fontStyle: 'italic' as const,
+                            },
+                            children: `"${scene.narrationText}"`,
+                        },
+                    },
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '24px',
+                                opacity: 0.2,
+                            },
+                            children: [
+                                { type: 'div', props: { style: { width: '80px', height: '1px', background: '#FFF' } } },
+                                { type: 'div', props: { style: { fontSize: '24px', fontWeight: 700, letterSpacing: '8px' }, children: 'ALIVE VISION AI' } },
+                                { type: 'div', props: { style: { width: '80px', height: '1px', background: '#FFF' } } },
+                            ],
+                        },
+                    },
+                ],
+            },
+        },
+    ];
+}
+
+/**
+ * 배경 이미지 위에 합성할 오버레이 VNode (배경은 완전 투명)
+ * 배경 이미지 위이므로 유리 카드 불투명도를 더 높여 가독성 확보
+ */
+function buildOverlayVnode(scene: Scene, topic: string, index: number, theme: typeof THEMES[0]) {
+    const glassBg = 'rgba(0, 0, 0, 0.55)';
+    const glassBorder = 'rgba(255,255,255,0.15)';
+    const overlayTheme = { ...theme, glass: glassBg, border: glassBorder };
+
+    return {
+        type: 'div',
+        props: {
+            style: {
+                width: WIDTH,
+                height: HEIGHT,
+                background: 'transparent',
+                display: 'flex',
+                flexDirection: 'column' as const,
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '120px 80px',
+                fontFamily: 'SlideFont',
+            },
+            children: buildChildren(scene, topic, index, overlayTheme),
+        },
+    };
 }

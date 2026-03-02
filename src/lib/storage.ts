@@ -38,3 +38,38 @@ export async function uploadSlide(
         publicUrl: urlData.publicUrl
     };
 }
+
+/**
+ * 배경 이미지를 Supabase Storage에 업로드합니다.
+ * 경로 규칙: jobs/{jobId}/bg/{sceneIndex}.png
+ *
+ * @returns { storagePath, publicUrl }
+ */
+export async function uploadBackground(
+    supabase: SupabaseClient,
+    jobId: string,
+    sceneIndex: number,
+    pngBuffer: Buffer
+): Promise<{ storagePath: string; publicUrl: string }> {
+    const storagePath = `jobs/${jobId}/bg/${sceneIndex}.png`;
+
+    const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(storagePath, pngBuffer, {
+            contentType: 'image/png',
+            upsert: true,
+        });
+
+    if (uploadError) {
+        throw new Error(`Storage upload failed for background scene ${sceneIndex}: ${uploadError.message}`);
+    }
+
+    const { data: urlData } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(storagePath);
+
+    return {
+        storagePath,
+        publicUrl: urlData.publicUrl,
+    };
+}
