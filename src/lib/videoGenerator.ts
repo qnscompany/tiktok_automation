@@ -50,10 +50,10 @@ export async function generateFinalVideo(
     }
 
     const slidePaths: string[] = [];
-    const audioPaths: string[] = [];
+    const audioInfos: AudioInfo[] = [];
 
     try {
-        // 2. 파일 다운로드
+        // 2. 파일 다운로드 및 메타데이터 추출
         for (let i = 0; i < slides.length; i++) {
             const slidePath = path.join(tempDir, `slide-${i}.png`);
             const audioPath = path.join(tempDir, `audio-${i}.wav`);
@@ -61,15 +61,17 @@ export async function generateFinalVideo(
             await downloadFile(slides[i].content_json.publicUrl, slidePath);
             await downloadFile(audios[i].content_json.publicUrl, audioPath);
 
+            const duration = await getAudioDuration(audioPath);
+            console.log(`Scene ${i} audio duration: ${duration}s`);
+
             slidePaths.push(slidePath);
-            audioPaths.push(audioPath);
+            audioInfos.push({ path: audioPath, duration });
         }
 
         const outputPath = path.join(tempDir, 'output.mp4');
 
         // 3. FFmpeg 합성
-        // 각 씬(이미지+오디오)을 개별적으로 처리한 후 합치는 방식이 안정적입니다.
-        await synthesizeVideo(slidePaths, audioPaths, outputPath);
+        await synthesizeVideo(slidePaths, audioInfos, outputPath);
 
         // 4. 결과 읽기
         const videoBuffer = fs.readFileSync(outputPath);
@@ -91,15 +93,31 @@ async function downloadFile(url: string, dest: string) {
     fs.writeFileSync(dest, Buffer.from(arrayBuffer));
 }
 
-function synthesizeVideo(slidePaths: string[], audioPaths: string[], outputPath: string): Promise<void> {
+interface AudioInfo {
+    path: string;
+    duration: number;
+}
+
+async function getAudioDuration(filePath: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+            if (err) return reject(err);
+            const duration = metadata.format.duration;
+            resolve(duration || 0);
+        });
+    });
+}
+
+function synthesizeVideo(slidePaths: string[], audioInfos: AudioInfo[], outputPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const command = ffmpeg();
 
         // 1. 모든 슬라이드와 오디오를 번갈아가며 입력 추가
-        // [slide0, audio0, slide1, audio1, ...]
         for (let i = 0; i < slidePaths.length; i++) {
-            command.input(slidePaths[i]).loop(1);
-            command.input(audioPaths[i]);
+            // 이미지를 루프시키되, 오디오 길이만큼만 지속하도록 설정
+            command.input(slidePaths[i])
+                .inputOptions([`-loop 1`, `-t ${audioInfos[i].duration}`]);
+            command.input(audioInfos[i].path);
         }
 
         // 2. 복합 필터 구성
@@ -112,8 +130,6 @@ function synthesizeVideo(slidePaths: string[], audioPaths: string[], outputPath:
 
             // 이미지 스케일링 및 패딩 (9:16 맞춤)
             filterComplex += `[${vIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}];`;
-            // 각 씬의 비디오를 해당 오디오 길이에 맞춤 (이게 핵심)
-            // shortest=1을 쓰기 위해 개별 씬을 서브 스트림으로 정의
             concatStreams += `[v${i}][${aIdx}:a]`;
         }
 
@@ -129,7 +145,7 @@ function synthesizeVideo(slidePaths: string[], audioPaths: string[], outputPath:
             .outputOptions([
                 '-pix_fmt yuv420p',
                 '-r 30',
-                '-shortest' // 각 인풋의 짧은 쪽에 맞춤 (오디오 길이에 맞게 영상이 끊김)
+                '-vsync vfr' // 가변 프레임레이트 허용하여 오디오 싱크 최적화
             ])
             .on('start', (cmd) => console.log('FFmpeg command:', cmd))
             .on('error', (err) => {
