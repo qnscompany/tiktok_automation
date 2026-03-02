@@ -31,38 +31,49 @@ const THEMES = [
 ];
 
 /**
- * 폰트 데이터를 로드합니다 (TTF 지원).
- * Vercel 환경에서는 public 폴더의 파일을 process.cwd() 기반으로 읽어옵니다.
+ * 폰트 로드 (영어 + 한글 완전 지원)
+ * - Inter Bold (WOFF1): 라틴, ASCII, 공백, 특수문자 커버
+ * - NotoSansKR Bold (TTF): 한글 커버
+ * 두 폰트를 같은 name으로 등록하면 satori가 fallback 방식으로 자동 처리
  */
 function loadFonts(): Parameters<typeof satori>[1]['fonts'] {
-    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansKR-Bold.ttf');
+    const fonts: Parameters<typeof satori>[1]['fonts'] = [];
 
-    if (!fs.existsSync(fontPath)) {
-        // 폴백: 만약 public/fonts에 없다면 node_modules에서 찾기
-        console.warn('Custom TTF font not found, falling back to node_modules...');
-        const basePath = path.join(process.cwd(), 'node_modules', '@fontsource', 'noto-sans-kr', 'files');
-        const files = fs.readdirSync(basePath).filter(f => f.includes('noto-sans-kr') && f.includes('-700-normal.woff'));
-
-        if (files.length === 0) throw new Error('No fonts found at all.');
-
-        return files.map(filename => {
-            const buf = fs.readFileSync(path.join(basePath, filename));
-            const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-            return { name: 'NotoSansKR', data: arrayBuffer, weight: 700, style: 'normal' };
-        });
-    }
-
-    const buf = fs.readFileSync(fontPath);
-    const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-
-    return [
-        {
-            name: 'NotoSansKR',
-            data: arrayBuffer,
+    // 1. Inter (라틴 / ASCII 담당) - node_modules의 WOFF1 파일
+    const interPath = path.join(
+        process.cwd(), 'node_modules', '@fontsource', 'inter', 'files', 'inter-latin-700-normal.woff'
+    );
+    if (fs.existsSync(interPath)) {
+        const buf = fs.readFileSync(interPath);
+        fonts.push({
+            name: 'SlideFont',
+            data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
             weight: 700,
             style: 'normal',
-        }
-    ];
+        });
+    } else {
+        console.warn('[FONT] Inter WOFF1 not found at:', interPath);
+    }
+
+    // 2. NotoSansKR (한글 담당) - TTF
+    const notoPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansKR-Bold.ttf');
+    if (fs.existsSync(notoPath)) {
+        const buf = fs.readFileSync(notoPath);
+        fonts.push({
+            name: 'SlideFont',
+            data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+            weight: 700,
+            style: 'normal',
+        });
+    } else {
+        console.warn('[FONT] NotoSansKR TTF not found at:', notoPath);
+    }
+
+    if (fonts.length === 0) {
+        throw new Error('[FONT] No fonts loaded. Slide rendering cannot proceed.');
+    }
+
+    return fonts;
 }
 
 /**
@@ -91,7 +102,7 @@ export async function renderSlide(
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '120px 80px',
-                fontFamily: 'NotoSansKR',
+                fontFamily: 'SlideFont',
             },
             children: [
                 // Header: Scene Indicator
