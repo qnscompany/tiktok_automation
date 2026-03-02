@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { generateTikTokScript, getGeminiClient } from '@/lib/gemini';
+import { generateSlides } from '@/lib/slideGenerator';
 import { logJob, logError } from '@/lib/log';
 
 export const runtime = 'nodejs';
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
         try {
             const script = await generateTikTokScript(job.topic, job.tone, job.audience);
 
-            // 6. 결과 저장 (assets 테이블)
+            // 6. 스크립트 결과 저장 (assets 테이블)
             const { error: assetError } = await supabase
                 .from('assets')
                 .insert([{
@@ -82,13 +83,18 @@ export async function GET(request: Request) {
 
             if (assetError) throw assetError;
 
-            // 7. 작업 완료 처리
+            logJob(jobId, 'RUNNING', 'Script generated, starting slide generation');
+
+            // 7. 슬라이드 이미지 5장 생성 + 업로드 + DB 기록
+            await generateSlides(supabase, jobId, script, job.topic);
+
+            // 8. 작업 완료 처리
             await supabase
                 .from('jobs')
                 .update({ status: 'done' })
                 .eq('id', jobId);
 
-            logJob(jobId, 'DONE', 'Job completed');
+            logJob(jobId, 'DONE', 'Job completed (script + 5 slides)');
             return NextResponse.json({ ok: true, jobId, requestId });
 
         } catch (error: any) {

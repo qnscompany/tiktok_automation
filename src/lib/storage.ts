@@ -1,0 +1,40 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+const BUCKET_NAME = 'tiktok-assets';
+
+/**
+ * 슬라이드 PNG 이미지를 Supabase Storage에 업로드합니다.
+ * 경로 규칙: jobs/{jobId}/slides/{index}.png
+ * 
+ * @returns { storagePath, publicUrl }
+ */
+export async function uploadSlide(
+    supabase: SupabaseClient,
+    jobId: string,
+    index: number,
+    pngBuffer: Buffer
+): Promise<{ storagePath: string; publicUrl: string }> {
+    const storagePath = `jobs/${jobId}/slides/${index}.png`;
+
+    // 업로드 (동일 경로가 있으면 덮어쓰기)
+    const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(storagePath, pngBuffer, {
+            contentType: 'image/png',
+            upsert: true  // 중복 시 덮어쓰기
+        });
+
+    if (uploadError) {
+        throw new Error(`Storage upload failed for slide ${index}: ${uploadError.message}`);
+    }
+
+    // Public URL 가져오기
+    const { data: urlData } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(storagePath);
+
+    return {
+        storagePath,
+        publicUrl: urlData.publicUrl
+    };
+}
