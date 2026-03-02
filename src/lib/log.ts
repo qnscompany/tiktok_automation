@@ -20,7 +20,7 @@ export function logError(message: string, error?: any, meta?: Record<string, any
     }));
 }
 
-export function logJob(jobId: string, status: 'START' | 'END' | 'FAILED', message: string, meta?: Record<string, any>) {
+export function logJob(jobId: string, status: 'START' | 'RUNNING' | 'DONE' | 'FAILED', message: string, meta?: Record<string, any>) {
     console.log(JSON.stringify({
         level: 'JOB',
         jobId,
