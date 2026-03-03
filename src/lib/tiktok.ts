@@ -20,11 +20,8 @@ export interface TikTokTokenResponse {
  */
 export function getTikTokAuthUrl(state: string = 'static_state') {
     const scopes = [
-        'video.upload',
-        'video.publish',
         'user.info.basic',
-        'user.info.profile',
-        'user.info.stats',
+        'video.publish',
     ].join(',');
 
     const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
