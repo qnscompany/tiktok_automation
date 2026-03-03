@@ -9,6 +9,7 @@ import { generateFinalVideo } from '@/lib/videoGenerator';
 import { renderSlide } from '@/lib/slideRenderer';
 import { uploadSlide, uploadVideo } from '@/lib/storage';
 import { logJob, logError } from '@/lib/log';
+import { getValidTikTokToken, publishVideoToTikTok } from '@/lib/tiktok';
 import type { TikTokScript } from '@/lib/schema';
 
 export const runtime = 'nodejs';
@@ -160,6 +161,22 @@ export async function GET(request: Request) {
                     }]);
 
                     logJob(jobId, 'DONE', 'Final video synthesized and uploaded.');
+
+                    // ── Step 6: 틱톡 자동 업로드 ────────────────────
+                    try {
+                        logJob(jobId, 'RUNNING', 'Attempting to publish to TikTok...');
+                        const accessToken = await getValidTikTokToken(bgSupabase);
+                        const publishId = await publishVideoToTikTok(
+                            accessToken,
+                            publicUrl,
+                            script.title || job.topic,
+                            `${script.caption || ''} #automation #tiktok`
+                        );
+                        logJob(jobId, 'DONE', `Video published to TikTok. Publish ID: ${publishId}`);
+                    } catch (publishErr: any) {
+                        logError(`TikTok publication failed for job ${jobId}`, publishErr);
+                        logJob(jobId, 'DONE', `Video synthetic done, but TikTok publish failed: ${publishErr.message}`);
+                    }
                 } catch (bgErr: any) {
                     logError(`after(): background generation failed for job ${jobId}`, bgErr);
                 }

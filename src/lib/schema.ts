@@ -14,6 +14,7 @@ export const SceneSchema = z.object({
 export const TikTokScriptSchema = z.object({
   durationSec: z.literal(15),
   scenes: z.array(SceneSchema).length(5),
+  title: z.string().optional(), // 틱톡 게시물 제목용
   caption: z.string(),
   hashtags: z.array(z.string()).min(5).max(10)
 });
