@@ -7,18 +7,12 @@ export default function Dashboard() {
   const [topic, setTopic] = useState<string>('Success Habits of Highly Effective People');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleAction = async (endpoint: string, method: string = 'POST', body?: any, withAuth?: boolean) => {
+  const handleAction = async (endpoint: string, method: string = 'POST', body?: any) => {
     setIsLoading(true);
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (withAuth) {
-        const secretRes = await fetch('/api/debug/env');
-        const env = await secretRes.json();
-        headers['Authorization'] = `Bearer ${env.CRON_SECRET || ''}`;
-      }
       const res = await fetch(endpoint, {
         method,
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined
       });
       const data = await res.json();
@@ -93,7 +87,7 @@ export default function Dashboard() {
             Create Generation Job
           </button>
           <button
-            onClick={() => handleAction('/api/jobs/run', 'GET', undefined, true)}
+            onClick={() => handleAction('/api/dashboard/run', 'GET')}
             disabled={isLoading}
             style={{ background: '#8b5cf6', color: '#fff', padding: '0.75rem', borderRadius: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer', opacity: isLoading ? 0.5 : 1 }}
           >
