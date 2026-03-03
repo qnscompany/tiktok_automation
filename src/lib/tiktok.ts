@@ -45,7 +45,10 @@ export async function exchangeCodeForToken(code: string): Promise<TikTokTokenRes
     params.append('grant_type', 'authorization_code');
     params.append('redirect_uri', REDIRECT_URI!);
 
-    const response = await fetch(`${TIKTOK_API_BASE}/auth/token/`, {
+    const tokenUrl = `${TIKTOK_API_BASE}/oauth/token/`;
+    console.log('Token exchange URL:', tokenUrl);
+
+    const response = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -53,12 +56,23 @@ export async function exchangeCodeForToken(code: string): Promise<TikTokTokenRes
         body: params.toString(),
     });
 
-    const data = await response.json();
-    if (!response.ok) {
+    const text = await response.text();
+    console.log('Token exchange raw response:', text.substring(0, 500));
+
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new Error(`TikTok returned non-JSON response: ${text.substring(0, 200)}`);
+    }
+
+    if (data.error || data.data?.error) {
         throw new Error(`TikTok Token Exchange Failed: ${JSON.stringify(data)}`);
     }
 
-    return data as TikTokTokenResponse;
+    // TikTok v2 wraps tokens in data object
+    const tokenData = data.data || data;
+    return tokenData as TikTokTokenResponse;
 }
 
 /**
