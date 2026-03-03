@@ -56,7 +56,9 @@ export async function generateFinalVideo(
             const audioPath = `${tempPrefix}-audio-${i}.wav`;
 
             await downloadFile(slides[i].content_json.publicUrl, slidePath);
+            console.log(`Downloaded slide ${i} to ${slidePath}`);
             await downloadFile(audios[i].content_json.publicUrl, audioPath);
+            console.log(`Downloaded audio ${i} to ${audioPath}`);
 
             const duration = await getAudioDuration(audioPath);
             console.log(`Scene ${i} audio duration: ${duration}s`);
@@ -145,6 +147,8 @@ function synthesizeVideo(slidePaths: string[], audioInfos: AudioInfo[], outputPa
         // 모든 씬 병합
         filterComplex += `${concatStreams}concat=n=${slidePaths.length}:v=1:a=1[outv][outa]`;
 
+        console.log('Filter Complex:', filterComplex);
+
         command
             .complexFilter(filterComplex)
             .map('[outv]')
@@ -170,7 +174,7 @@ function synthesizeVideo(slidePaths: string[], audioInfos: AudioInfo[], outputPa
                 reject(errorWithDetails);
             })
             .on('end', () => {
-                console.log('Video synthesis complete');
+                console.log('FFmpeg synthesis successfully finished');
                 resolve();
             })
             .save(outputPath);
