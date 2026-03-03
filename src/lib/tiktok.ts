@@ -23,6 +23,8 @@ export function getTikTokAuthUrl(state: string = 'static_state') {
         'video.upload',
         'video.publish',
         'user.info.basic',
+        'user.info.profile',
+        'user.info.stats',
     ].join(',');
 
     const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
