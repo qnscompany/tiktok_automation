@@ -194,7 +194,8 @@ export async function GET(request: Request) {
 
                 } catch (bgErr: any) {
                     logError(`after(): background generation failed for job ${jobId}`, bgErr);
-                    await bgSupabase.from('jobs')
+                    // Use the main supabase client since bgSupabase might be out of scope
+                    await supabase.from('jobs')
                         .update({ status: 'failed', error: bgErr.message })
                         .eq('id', jobId);
                 }
