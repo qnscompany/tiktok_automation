@@ -187,6 +187,18 @@ export async function GET(request: Request) {
                         logJob(jobId, 'DONE', `Video published to TikTok. Publish ID: ${publishId}`);
                     } catch (publishErr: any) {
                         logError(`TikTok publication failed for job ${jobId}`, publishErr);
+
+                        // Assets 테이블에 에러 정보 기록 (영구 보관용)
+                        await bgSupabase.from('assets').insert([{
+                            job_id: jobId,
+                            type: 'tiktok_error',
+                            content_json: {
+                                error: publishErr.message,
+                                details: publishErr.toString(),
+                                timestamp: new Date().toISOString()
+                            }
+                        }]);
+
                         logJob(jobId, 'DONE', `Video synthetic done, but TikTok publish failed: ${publishErr.message}`);
                     }
                     logJob(jobId, 'DONE', 'Pipeline fully completed.');
