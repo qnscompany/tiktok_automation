@@ -172,6 +172,18 @@ export async function GET(request: Request) {
                             script.title || job.topic,
                             `${script.caption || ''} #automation #tiktok`
                         );
+
+                        // Assets 테이블에 틱톡 게시 정보 기록
+                        await bgSupabase.from('assets').insert([{
+                            job_id: jobId,
+                            type: 'tiktok_publish',
+                            content_json: {
+                                publish_id: publishId,
+                                status: 'published',
+                                published_at: new Date().toISOString()
+                            }
+                        }]);
+
                         logJob(jobId, 'DONE', `Video published to TikTok. Publish ID: ${publishId}`);
                     } catch (publishErr: any) {
                         logError(`TikTok publication failed for job ${jobId}`, publishErr);
