@@ -165,7 +165,7 @@ export async function publishVideoToTikTok(
             post_info: {
                 title: title,
                 description: description,
-                privacy_level: 'PUBLIC_TO_EVERYONE',
+                privacy_level: 'SELF_ONLY',
             },
             source_info: {
                 source: 'PULL_FROM_URL',

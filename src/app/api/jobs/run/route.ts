@@ -82,9 +82,9 @@ export async function GET(request: Request) {
             // ── Step 2.1: TTS 오디오 생성 (나레이션) ──────────────────
             await generateAudioAssets(supabase, jobId, script.scenes);
 
-            // ── Step 3: 작업 완료 처리 ────────────────────────────
-            await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
-            logJob(jobId, 'DONE', 'Job completed (5 slides + 5 audio narration)');
+            // ── Step 3: 작업 실행 상태로 전환 ────────────────────────────
+            await supabase.from('jobs').update({ status: 'running' }).eq('id', jobId);
+            logJob(jobId, 'RUNNING', 'Starting background pipeline (synthesis + upload)');
 
             // ── Step 4: after() — 응답 후 배경 생성 + 슬라이드 재렌더 
             after(async () => {
@@ -189,8 +189,14 @@ export async function GET(request: Request) {
                         logError(`TikTok publication failed for job ${jobId}`, publishErr);
                         logJob(jobId, 'DONE', `Video synthetic done, but TikTok publish failed: ${publishErr.message}`);
                     }
+                    logJob(jobId, 'DONE', 'Pipeline fully completed.');
+                    await bgSupabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+
                 } catch (bgErr: any) {
                     logError(`after(): background generation failed for job ${jobId}`, bgErr);
+                    await bgSupabase.from('jobs')
+                        .update({ status: 'failed', error: bgErr.message })
+                        .eq('id', jobId);
                 }
             });
 
